@@ -1,14 +1,10 @@
-# Sestaví APK panelu pro hodiny při každé změně ve složce panel/.
+# Sestaví APK panelu pro hodiny při každé změně.
 # Hotovou APK najdeš v Actions → poslední běh → Artifacts → panel-apk.
 name: Build panel APK
 
 on:
   push:
-    paths:
-      - "panel/**"
-      - ".github/workflows/panel.yml"
-      - "settings.gradle.kts"
-      - "build.gradle.kts"
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -34,8 +30,13 @@ jobs:
       - name: Keystore
         env:
           KS_B64: ${{ secrets.PANEL_KEYSTORE_B64 }}
-        if: env.KS_B64 != ''
         run: |
+          # Bez stálého klíče by se APK podepsala náhodným klíčem a přes nainstalovanou verzi
+          # by nešla nainstalovat — radši nevydat nic.
+          if [ -z "$KS_B64" ]; then
+            echo "::error title=Chybí podpisový klíč::Přidej secrets PANEL_KEYSTORE_B64 a PANEL_KEYSTORE_PASSWORD (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/panel.keystore"
           echo "PANEL_KEYSTORE=$RUNNER_TEMP/panel.keystore" >> "$GITHUB_ENV"
 
@@ -45,7 +46,7 @@ jobs:
         run: |
           chmod +x gradlew
           set +e
-          ./gradlew --no-daemon --console=plain :panel:assembleDebug > build.log 2>&1
+          ./gradlew --no-daemon --console=plain assembleDebug > build.log 2>&1
           rc=$?
           set -e
           cat build.log
@@ -58,7 +59,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: panel-apk
-          path: panel/build/outputs/apk/debug/panel-debug.apk
+          path: build/outputs/apk/debug/panel-debug.apk
 
       # Veřejný odkaz ke stažení přímo do hodin:
       # https://github.com/<repo>/releases/download/panel-latest/panel.apk
@@ -70,7 +71,7 @@ jobs:
             echo "Na větvi je novější commit ($head), vydání přeskakuji."
             exit 0
           fi
-          cp panel/build/outputs/apk/debug/panel-debug.apk panel.apk
+          cp build/outputs/apk/debug/panel-debug.apk panel.apk
           # Smaže předchozí vydání (i nepovedené koncepty), posune štítek na tuto verzi
           # a vytvoří vydání znovu — odkaz ke stažení zůstává pořád stejný.
           gh release list --limit 50 --json tagName,name,isDraft \
@@ -79,6 +80,6 @@ jobs:
           git push -f origin "$GITHUB_SHA:refs/tags/panel-latest"
           gh release create panel-latest panel.apk --prerelease --verify-tag \
             --title "Panel pro hodiny (nejnovější)" \
-            --notes "Automaticky sestaveno z $GITHUB_SHA. Instalace: viz panel/README.md."
+            --notes "Automaticky sestaveno z $GITHUB_SHA. Instalace: viz README.md."
         env:
           GH_TOKEN: ${{ github.token }}
