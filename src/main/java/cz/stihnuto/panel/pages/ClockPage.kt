@@ -70,6 +70,8 @@ class ClockPage(ctx: Context) : Page(ctx) {
     private class AirBar(ctx: Context) : View(ctx) {
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
         private val shine = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val glowRect = RectF()
         private val rect = RectF()
         private val clip = Path()
         private var target: Int? = null
@@ -106,15 +108,26 @@ class ClockPage(ctx: Context) : Page(ctx) {
             val dt = if (lastFrame == 0L) 16 else (now - lastFrame).coerceIn(1, 100)
             lastFrame = now
             if (color != t) color = mix(color, t, (dt / 400f).coerceAtMost(1f)) // přelití barvy ~1 s
+            val rad = rect.height() / 2
+            // záře kolem proužku (dvě průsvitné vrstvy), pak sytý proužek a světlejší horní hrana
+            glow.color = (color and 0x00FFFFFF) or 0x30000000
+            glowRect.set(rect.left - rad * 0.9f, rect.top - rad * 0.9f, rect.right + rad * 0.9f, rect.bottom + rad * 0.9f)
+            c.drawRoundRect(glowRect, rad * 1.9f, rad * 1.9f, glow)
+            glow.color = (color and 0x00FFFFFF) or 0x55000000
+            glowRect.set(rect.left - rad * 0.4f, rect.top - rad * 0.4f, rect.right + rad * 0.4f, rect.bottom + rad * 0.4f)
+            c.drawRoundRect(glowRect, rad * 1.4f, rad * 1.4f, glow)
             p.color = color
-            c.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, p)
+            c.drawRoundRect(rect, rad, rad, p)
+            p.color = mix(color, 0xFFFFFFFF.toInt(), 0.35f)
+            glowRect.set(rect.left + rad, rect.top + rect.height() * 0.18f, rect.right - rad, rect.top + rect.height() * 0.42f)
+            c.drawRoundRect(glowRect, rad * 0.3f, rad * 0.3f, p)
             if (spinning && running) {
                 // světlý odlesk projde proužkem jednou za ~4 s
                 phase = (phase + dt / 4000f) % 1f
                 val w = rect.width() * 0.25f
                 val x = rect.left - w + (rect.width() + 2 * w) * phase
                 shine.shader = android.graphics.LinearGradient(x, 0f, x + w, 0f,
-                    intArrayOf(0x00FFFFFF, 0x88FFFFFF.toInt(), 0x00FFFFFF), null, android.graphics.Shader.TileMode.CLAMP)
+                    intArrayOf(0x00FFFFFF, 0xAAFFFFFF.toInt(), 0x00FFFFFF), null, android.graphics.Shader.TileMode.CLAMP)
                 c.save(); c.clipPath(clip); c.drawRect(x, rect.top, x + w, rect.bottom, shine); c.restore()
             }
             if (running && (color != t || spinning)) {
@@ -332,7 +345,7 @@ class ClockPage(ctx: Context) : Page(ctx) {
                 val labelSize = h * 0.046f
                 // s proužkem kvality vzduchu se souhrn kousek zvedne, ať se pod něj vejde
                 val withBar = App.instance.purifier.data?.let { it.online && it.level != null } == true
-                val iy = top + (bottom - top - h * 0.12f) / 2 + h * 0.046f - (if (withBar) h * 0.02f else 0f)
+                val iy = top + (bottom - top - h * 0.12f) / 2 + h * 0.046f - (if (withBar) h * 0.03f else 0f)
                 // hodnoty větší, ať vyplní uvolněné místo; zmenší se, jen kdyby se nevešly
                 var vs = h * 0.078f
                 value2.textSize = vs
@@ -345,8 +358,8 @@ class ClockPage(ctx: Context) : Page(ctx) {
                     c.drawText(label, x, iy, small)
                     c.drawText(value, x, iy + h * 0.082f, value2)
                 }
-                val by = iy + h * 0.082f + h * 0.045f
-                if (withBar) airBar.place(leftL + iw * 0.18f, by, leftR - iw * 0.18f, by + h * 0.014f)
+                val by = iy + h * 0.082f + h * 0.042f
+                if (withBar) airBar.place(leftL + iw * 0.06f, by, leftR - iw * 0.06f, by + h * 0.026f)
                 else airBar.place(0f, 0f, 0f, 0f)
             }
 

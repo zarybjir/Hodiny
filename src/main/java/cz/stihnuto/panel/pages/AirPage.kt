@@ -55,51 +55,56 @@ class AirPage(ctx: Context) : Page(ctx) {
         }
         if (!p.online) list.addView(message("Čistička je offline (vypnutá ze zásuvky, nebo bez WiFi)."))
 
-        // --- kvalita vzduchu
-        val level = p.level
-        val top = LinearLayout(ctx).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            background = Ui.rounded(Ui.CARD, u * 4)
-            setPadding((u * 5).toInt(), (u * 3).toInt(), (u * 5).toInt(), (u * 3).toInt())
-        }
-        val left = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        left.addView(Ui.text(ctx, "Prach PM2.5", u * 4.2f, Ui.DIM))
-        val row = LinearLayout(ctx).apply { gravity = Gravity.BOTTOM }
-        row.addView(Ui.text(ctx, p.pm25?.let { "${Math.round(it)}" } ?: "–", u * 16, Ui.TEXT, Ui.LIGHT))
-        row.addView(Ui.text(ctx, "  µg/m³", u * 4.5f, Ui.DIM), LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = (u * 2.2f).toInt() })
-        left.addView(row)
-        top.addView(left, LinearLayout.LayoutParams(0, -2, 1f))
-        if (level != null) {
-            top.addView(Ui.text(ctx, LEVEL_TEXT[level], u * 5.5f, Ui.BG, Ui.MEDIUM).apply {
-                background = Ui.rounded(levelColor(level), u * 4)
-                setPadding((u * 4).toInt(), (u * 1.6f).toInt(), (u * 4).toInt(), (u * 1.8f).toInt())
+        // --- celkové hodnocení (to samé, co ukazuje proužek na hlavním okně) a proč
+        p.level?.let { lvl ->
+            val sum = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
+            sum.addView(Ui.text(ctx, OVERALL_TEXT[lvl], u * 5f, Ui.BG, Ui.MEDIUM).apply {
+                background = Ui.rounded(levelColor(lvl), u * 4)
+                setPadding((u * 4).toInt(), (u * 1.4f).toInt(), (u * 4).toInt(), (u * 1.6f).toInt())
             })
+            p.worstCause?.let { cause ->
+                sum.addView(Ui.text(ctx, "kvůli: $cause", u * 4.4f, Ui.DIM),
+                    LinearLayout.LayoutParams(-2, -2).apply { leftMargin = (u * 3).toInt() })
+            }
+            list.addView(sum, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 2).toInt() })
         }
-        list.addView(top, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 3).toInt() })
+        if (p.doorOpen == true) list.addView(Ui.text(ctx, "Dvířka filtru jsou otevřená — čistička nečistí.", u * 4.6f, Ui.HEAT, Ui.MEDIUM),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 2).toInt() })
 
-        // --- ostatní čidla (jen ta, která model hlásí)
+        // --- jednotlivá čidla, každé se svým vlastním hodnocením (jen ta, která model hlásí)
+        class Tile(val label: String, val value: String, val unit: String, val level: Int?)
         val tiles = listOfNotNull(
-            p.co2?.let { Triple("CO₂", "${Math.round(it)}", "ppm") },
-            p.tvoc?.let { Triple("Těkavé látky", "${Math.round(it)}", "ppb") },
-            p.pm1?.let { Triple("PM1", "${Math.round(it)}", "µg/m³") },
-            p.pm10?.let { Triple("PM10", "${Math.round(it)}", "µg/m³") },
-            p.temp?.let { Triple("Teplota", Ui.num(it), "°C") },
-            p.humidity?.let { Triple("Vlhkost", "${Math.round(it)}", "%") },
+            p.pm25?.let { Tile("Prach PM2.5", "${Math.round(it)}", "µg/m³", Purifier.levelPm25(it)) },
+            p.tvoc?.let { Tile("Těkavé látky", "${Math.round(it)}", "ppb", Purifier.levelTvoc(it)) },
+            p.co2?.let { Tile("CO₂", "${Math.round(it)}", "ppm", Purifier.levelCo2(it)) },
+            p.pm10?.let { Tile("Prach PM10", "${Math.round(it)}", "µg/m³", Purifier.levelPm10(it)) },
+            p.pm1?.let { Tile("Prach PM1", "${Math.round(it)}", "µg/m³", null) },
+            p.temp?.let { Tile("Teplota", Ui.num(it), "°C", null) },
+            p.humidity?.let { Tile("Vlhkost", "${Math.round(it)}", "%", null) },
         )
         tiles.chunked(3).forEach { group ->
             val r = LinearLayout(ctx)
-            group.forEachIndexed { i, (label, value, unit) ->
+            group.forEachIndexed { i, t ->
                 val card = LinearLayout(ctx).apply {
                     orientation = LinearLayout.VERTICAL
                     background = Ui.rounded(Ui.CARD, u * 3)
                     setPadding((u * 4).toInt(), (u * 2.5f).toInt(), (u * 4).toInt(), (u * 2.5f).toInt())
                 }
-                card.addView(Ui.text(ctx, label, u * 4f, Ui.DIM))
+                card.addView(Ui.text(ctx, t.label, u * 4f, Ui.DIM))
                 val vr = LinearLayout(ctx).apply { gravity = Gravity.BOTTOM }
-                vr.addView(Ui.text(ctx, value, u * 7.5f, Ui.TEXT, Ui.LIGHT))
-                vr.addView(Ui.text(ctx, " $unit", u * 3.8f, Ui.DIM), LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = (u * 1.1f).toInt() })
+                vr.addView(Ui.text(ctx, t.value, u * 8.5f, Ui.TEXT, Ui.LIGHT))
+                vr.addView(Ui.text(ctx, " ${t.unit}", u * 3.8f, Ui.DIM), LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = (u * 1.2f).toInt() })
                 card.addView(vr)
-                r.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) leftMargin = (u * 3).toInt() })
+                if (t.level != null) {
+                    // hodnocení právě téhle hodnoty: barevná čárka a slovo
+                    val lr = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
+                    lr.addView(View(ctx).apply { background = Ui.rounded(levelColor(t.level), u) },
+                        LinearLayout.LayoutParams((u * 6).toInt(), (u * 1.2f).toInt()))
+                    lr.addView(Ui.text(ctx, LEVEL_TEXT[t.level], u * 3.6f, Ui.DIM),
+                        LinearLayout.LayoutParams(-2, -2).apply { leftMargin = (u * 1.8f).toInt() })
+                    card.addView(lr, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (u * 1.2f).toInt() })
+                }
+                r.addView(card, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) leftMargin = (u * 3).toInt() })
             }
             repeat(3 - group.size) { r.addView(View(ctx), LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = (u * 3).toInt() }) }
             list.addView(r, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 3).toInt() })
@@ -153,21 +158,34 @@ class AirPage(ctx: Context) : Page(ctx) {
 
         // --- filtr (hodnotu počítá čistička sama z doby a zátěže provozu)
         p.filterLife?.let { f ->
-            list.addView(Ui.text(ctx, "Filtr $f %" + if (f <= 10) " · připrav výměnu" else "",
+            list.addView(Ui.text(ctx, "Filtr" + (p.filterName?.let { " $it" } ?: "") + " $f %" + if (f <= 10) " · připrav výměnu" else "",
                 u * 4.2f, if (f <= 10) Ui.HEAT else Ui.DIM),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 4).toInt() })
         }
-        list.addView(Ui.text(ctx, "Změna z hodin se v cloudu Electroluxu projeví do půl minuty.", u * 3.4f, Ui.FAINT),
+        list.addView(Ui.text(ctx, "Změna z hodin se v cloudu Electroluxu projeví do půl minuty." +
+            (p.signal?.let { " · WiFi signál: ${it.lowercase()}" } ?: ""), u * 3.4f, Ui.FAINT),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 2).toInt() })
+        // přehled všeho, co čistička posílá (sem se dá podívat, co ještě umí)
+        list.addView(Ui.button(ctx, if (showRaw) "Skrýt údaje z čističky" else "Všechny údaje z čističky", u * 3.8f) {
+            showRaw = !showRaw; render()
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (u * 3).toInt() })
+        if (showRaw) list.addView(Ui.text(ctx, (if (p.model.isNotBlank()) "model ${p.model}\n" else "") +
+            p.raw.entries.joinToString("\n") { "${it.key}: ${it.value}" }, u * 3.4f, Ui.DIM),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = (u * 1.5f).toInt() })
     }
+
+    private var showRaw = false
 
     private fun message(t: String) = Ui.text(ctx, t, u * 4.5f, Ui.DIM).apply { setPadding(0, (u * 3).toInt(), 0, 0) }
 
     companion object {
-        val LEVEL_TEXT = listOf("Dobrý vzduch", "Zhoršený", "Špatný", "Velmi špatný")
+        /** Hodnocení jedné hodnoty. */
+        val LEVEL_TEXT = listOf("dobré", "zhoršené", "špatné", "velmi špatné")
+        /** Celkové hodnocení vzduchu. */
+        val OVERALL_TEXT = listOf("Dobrý vzduch", "Zhoršený vzduch", "Špatný vzduch", "Velmi špatný vzduch")
         /** Barva kvality vzduchu (i proužek na hlavním okně): zářivě modrá = dobrý. */
         fun levelColor(level: Int) = when (level) {
-            0 -> 0xFF2F9BFF.toInt()
+            0 -> 0xFF1FA2FF.toInt()
             1 -> 0xFFFFD43B.toInt()
             2 -> 0xFFFF9838.toInt()
             else -> 0xFFFF4D4D.toInt()

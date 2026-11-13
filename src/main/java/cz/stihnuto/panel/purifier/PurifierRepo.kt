@@ -26,6 +26,14 @@ class Purifier(
     /** Přepínače, které model umí (Ionizer, UILight, SafetyLock) → zapnuto/vypnuto. */
     val features: Map<String, Boolean>,
     val fetchedAt: Long,
+    /** Dvířka filtru otevřená (čistička pak stojí). */
+    val doorOpen: Boolean? = null,
+    /** Druh vloženého filtru (číslo z čističky, viz [filterName]). */
+    val filterType: Int? = null,
+    /** Síla WiFi signálu, jak ji čistička hlásí (např. „GOOD“). */
+    val signal: String? = null,
+    /** Úplně všechno, co čistička hlásí (pro přehled v okně Vzduch). */
+    val raw: Map<String, String> = emptyMap(),
 ) {
     val on get() = online && !workmode.equals("PowerOff", true)
     val auto get() = workmode.equals("Auto", true) || workmode.equals("Smart", true)
@@ -37,8 +45,23 @@ class Purifier(
     val level: Int?
         get() = listOfNotNull(pm25?.let { levelPm25(it) }, tvoc?.let { levelTvoc(it) }, co2?.let { levelCo2(it) }).maxOrNull()
 
+    /** Co celkovou kvalitu zhoršuje nejvíc (pro vysvětlení u celkového hodnocení); null = vše dobré. */
+    val worstCause: String?
+        get() {
+            val l = level ?: return null
+            if (l == 0) return null
+            return listOfNotNull(
+                pm25?.takeIf { levelPm25(it) == l }?.let { "prach" },
+                tvoc?.takeIf { levelTvoc(it) == l }?.let { "těkavé látky" },
+                co2?.takeIf { levelCo2(it) == l }?.let { "CO₂" },
+            ).joinToString(" a ").ifEmpty { null }
+        }
+
+    val filterName get() = filterType?.let { FILTER_NAMES[it] }
+
     fun copy(workmode: String = this.workmode, fan: Int? = this.fan, features: Map<String, Boolean> = this.features) = Purifier(
         name, model, online, workmode, fan, fanMin, fanMax, pm1, pm25, pm10, tvoc, co2, temp, humidity, filterLife, features, fetchedAt,
+        doorOpen, filterType, signal, raw,
     )
 
     companion object {
@@ -47,6 +70,13 @@ class Purifier(
         fun levelCo2(v: Double) = when { v <= 1000 -> 0; v <= 1500 -> 1; v <= 2000 -> 2; else -> 3 }
         // TVOC v ppb podle stupnic německého úřadu pro životní prostředí (UBA), převedeno na ppb
         fun levelTvoc(v: Double) = when { v <= 220 -> 0; v <= 660 -> 1; v <= 2200 -> 2; else -> 3 }
+        // PM10 podle doporučení WHO (denní limit 45 µg/m³)
+        fun levelPm10(v: Double) = when { v <= 20 -> 0; v <= 45 -> 1; v <= 100 -> 2; else -> 3 }
+        // filtry Electrolux podle čísla, které čistička hlásí (převzato z integrace pro Home Assistant)
+        val FILTER_NAMES = mapOf(48 to "BREEZE Complete", 49 to "CLEAN Ultrafine Particle", 51 to "CARE Ultimate Protect",
+            55 to "Breathe 400", 64 to "Breeze 360", 65 to "Clean 360", 66 to "Protect 360", 67 to "Breathe 360",
+            68 to "Fresh 360", 96 to "Breeze 360", 99 to "Breeze 360", 100 to "Fresh 360", 192 to "FRESH Odour Protect",
+            194 to "FRESH Odour Protect")
         val FEATURES = listOf("Ionizer", "UILight", "SafetyLock")
     }
 }
@@ -167,6 +197,10 @@ class PurifierRepo(app: App) : Repo(app) {
             temp = num("Temp"), humidity = num("Humidity"),
             filterLife = (num("FilterLife") ?: num("FilterLife_1"))?.toInt(),
             features = features, fetchedAt = System.currentTimeMillis(),
+            doorOpen = bool(r.opt("DoorOpen")).takeIf { r.has("DoorOpen") },
+            filterType = (num("FilterType") ?: num("FilterType_1"))?.toInt(),
+            signal = r.optString("SignalStrength").takeIf { it.isNotBlank() },
+            raw = r.keys().asSequence().sorted().associateWith { k -> r.opt(k).toString().take(60) },
         )
         // příkazy z posledních chvil mají přednost (cloud je ještě nehlásí)
         val now = System.currentTimeMillis()
