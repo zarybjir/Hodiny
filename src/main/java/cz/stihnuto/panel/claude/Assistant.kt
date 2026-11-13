@@ -444,6 +444,16 @@ class Assistant(private val app: App) {
         if (heat.isNotEmpty()) out += "Topení: " + heat.joinToString("; ") { c ->
             "${c.name} ${Ui.num(c.currentTemp)} °C" + if (!c.on) " (vypnuto)" else " → cíl ${Ui.num(c.targetTemp)} °C${if (c.heating) ", topí" else ""}"
         } + "." + (app.heating.activeScene()?.let { " Scéna: ${it.name}." } ?: "")
+        app.purifier.data?.let { a ->
+            val vals = listOfNotNull(a.pm25?.let { "PM2.5 ${Math.round(it)} µg/m³" }, a.tvoc?.let { "TVOC ${Math.round(it)} ppb" },
+                a.co2?.let { "CO₂ ${Math.round(it)} ppm" }, a.humidity?.let { "vlhkost ${Math.round(it)} %" })
+            out += "Vzduch doma: " + vals.joinToString(", ") + ". Čistička " + when {
+                !a.online -> "offline"
+                !a.on -> "vypnutá"
+                a.auto -> "běží v automatice"
+                else -> "běží ručně na rychlost ${a.fan ?: "?"} z ${a.fanMax}"
+            } + "."
+        }
         app.calendar.upcoming().take(3).takeIf { it.isNotEmpty() }?.let { ev ->
             out += "Kalendář: " + ev.joinToString("; ") { e ->
                 "${Ui.dayShort(e.start.toLocalDate())} ${if (e.allDay) "celý den" else Ui.time(e.start)} ${e.title.take(80)}"
@@ -484,6 +494,31 @@ class Assistant(private val app: App) {
             app.heating.applyScene(name) { err = it; latch.countDown() }
             latch.await(30, TimeUnit.SECONDS)
             err?.let { "Chyba: $it" } ?: "Scéna $name nastavena."
+        }
+        "air_purifier" -> {
+            val repo = app.purifier
+            if (!repo.configured) "Čistička není připojená — v nastavení hodin chybí přihlášení k Electroluxu."
+            else {
+                val latch = CountDownLatch(1)
+                var err: String? = null
+                val done: (String?) -> Unit = { err = it; latch.countDown() }
+                val action = input["action"]?.toString() ?: ""
+                val speed = (input["speed"] as? Number)?.toInt()
+                when {
+                    speed != null -> repo.setFan(speed, done)
+                    action == "on" -> repo.setPower(true, done)
+                    action == "off" -> repo.setPower(false, done)
+                    action == "auto" -> repo.setAuto(true, done)
+                    action == "manual" -> repo.setAuto(false, done)
+                    action == "ionizer_on" -> repo.setFeature("Ionizer", true, done)
+                    action == "ionizer_off" -> repo.setFeature("Ionizer", false, done)
+                    action == "light_on" -> repo.setFeature("UILight", true, done)
+                    action == "light_off" -> repo.setFeature("UILight", false, done)
+                    else -> { err = "neznámá akce $action"; latch.countDown() }
+                }
+                latch.await(20, TimeUnit.SECONDS)
+                err?.let { "Chyba: $it" } ?: "Hotovo."
+            }
         }
         "media_control" -> {
             val action = input["action"]?.toString() ?: ""
@@ -568,6 +603,13 @@ class Assistant(private val app: App) {
                 .put("topi", c.heating).put("vlhkost", c.humidity).put("online", c.online)
         }))
         app.heating.error?.let { j.put("topeni_chyba", it) }
+        app.purifier.data?.let { a ->
+            j.put("cisticka", JSONObject().put("online", a.online).put("zapnuto", a.on).put("rezim", a.workmode)
+                .put("rychlost", a.fan).put("rychlost_max", a.fanMax).put("pm1", a.pm1).put("pm2_5", a.pm25).put("pm10", a.pm10)
+                .put("tvoc_ppb", a.tvoc).put("co2_ppm", a.co2).put("teplota", a.temp).put("vlhkost", a.humidity)
+                .put("filtr_procent", a.filterLife).put("kvalita", a.level?.let { listOf("dobrá", "zhoršená", "špatná", "velmi špatná")[it] }))
+        }
+        app.purifier.error?.let { j.put("cisticka_chyba", it) }
         j.put("kalendar", JSONArray(app.calendar.upcoming().take(20).map { e ->
             JSONObject().put("nazev", e.title.take(120)).put("zacatek", e.start.toString()).put("konec", e.end.toString())
                 .put("cely_den", e.allDay).put("misto", e.location.take(80))
@@ -620,7 +662,7 @@ class Assistant(private val app: App) {
                 tool(
                     "show_page", "Přepne panel na jiné okno.",
                     mapOf("page" to mapOf("type" to "string", "enum" to Pages.all.keys.toList(),
-                        "description" to "clock=hodiny, calendar=kalendář, weather=počasí na dny, hourly=po hodinách, radar, music=hudba, heating=topení, claude=asistent")),
+                        "description" to "clock=hodiny, calendar=kalendář, weather=počasí na dny, hourly=po hodinách, radar, music=hudba, heating=topení, air=vzduch a čistička, claude=asistent")),
                     listOf("page"),
                 ),
                 tool(
@@ -644,6 +686,15 @@ class Assistant(private val app: App) {
                         "Pryč = když nikdo není doma (odjezd, dovolená), Vše vypnout = jen ochrana proti mrazu.",
                     mapOf("scene" to mapOf("type" to "string", "enum" to listOf("Doma", "Noc", "Pryč", "Vše vypnout"))),
                     listOf("scene"),
+                ),
+                tool(
+                    "air_purifier", "Ovládá čističku vzduchu Electrolux: zapnout/vypnout, automatika/ručně, rychlost ventilátoru, " +
+                        "ionizátor, světlo na čističce. Kvalitu vzduchu doma najdeš v přehledu nebo v get_status.",
+                    mapOf(
+                        "action" to mapOf("type" to "string", "enum" to listOf("on", "off", "auto", "manual",
+                            "ionizer_on", "ionizer_off", "light_on", "light_off")),
+                        "speed" to mapOf("type" to "integer", "description" to "Rychlost ventilátoru (1 až 9 u Pure A9); přepne do ručního režimu. Místo action."),
+                    ),
                 ),
                 tool(
                     "media_control", "Ovládá právě hrající hudbu/video (YouTube Music apod.).",

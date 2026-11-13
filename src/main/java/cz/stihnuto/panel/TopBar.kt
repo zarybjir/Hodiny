@@ -23,7 +23,7 @@ class TopBar(ctx: Context) : View(ctx) {
 
     private fun label(id: String) = when (id) {
         "clock" -> "Čas"; "calendar" -> "Kalendář"; "weather" -> "Počasí"; "hourly" -> "Předpověď"
-        "radar" -> "Radar"; "music" -> "Hudba"; "heating" -> "Topení"; "claude" -> "Pepo"; "apps" -> "Aplikace"
+        "radar" -> "Radar"; "music" -> "Hudba"; "heating" -> "Topení"; "air" -> "Vzduch"; "claude" -> "Pepo"; "apps" -> "Aplikace"
         else -> cz.stihnuto.panel.pages.Pages.all[id]?.title ?: id
     }
 
@@ -77,6 +77,15 @@ class TopBar(ctx: Context) : View(ctx) {
                 path.quadTo(cx + r * 0.9f, cy - r * 0.2f, cx + r * 0.5f, cy + r * 0.5f)
                 path.arcTo(RectF(cx - r * 0.55f, cy - r * 0.15f, cx + r * 0.55f, cy + r * 0.95f), -30f, 240f, false)
                 path.quadTo(cx - r * 0.7f, cy - r * 0.3f, cx, cy - r); c.drawPath(path, p)
+            }
+            "air" -> { // tři vlnky vzduchu
+                for (k in 0 until 3) {
+                    val y = cy - r * 0.6f + k * r * 0.6f
+                    val path = Path(); path.moveTo(cx - r, y)
+                    path.cubicTo(cx - r * 0.5f, y - r * 0.35f, cx, y + r * 0.35f, cx + r * 0.5f, y)
+                    path.quadTo(cx + r * 0.85f, y - r * 0.2f, cx + r, y)
+                    c.drawPath(path, p)
+                }
             }
             "claude" -> { c.drawRoundRect(RectF(cx - r * 0.45f, cy - r, cx + r * 0.45f, cy + r * 0.2f), r * 0.45f, r * 0.45f, p); c.drawArc(RectF(cx - r * 0.8f, cy - r * 0.6f, cx + r * 0.8f, cy + r), 20f, 140f, false, p); line(cx, cy + r, cx, cy + r * 1.1f) }
             "apps" -> { p.style = Paint.Style.FILL; for (k in 0 until 4) { val dx = (k % 2) * r * 0.9f - r * 0.45f; val dy = (if (k < 2) -1 else 1) * r * 0.45f; c.drawRoundRect(RectF(cx + dx - r * 0.32f, cy + dy - r * 0.32f, cx + dx + r * 0.32f, cy + dy + r * 0.32f), r * 0.14f, r * 0.14f, p) } }

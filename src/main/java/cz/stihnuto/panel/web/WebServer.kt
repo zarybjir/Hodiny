@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit
  *  - POST /api/play         {"query":"Kryštof","kind":"song|album|playlist"} → YouTube Music
  *  - POST /api/open         {"app":"youtube_music","search":"…"}
  *  - POST /api/ask          {"text":"…"} → odpověď Clauda
+ *  - POST /api/purifier     {"power":true} | {"mode":"auto|manual"} | {"speed":3} | {"ionizer":true}
  *
  * Díky API může panel ovládat i Claude na počítači (viz README).
  *
@@ -176,6 +177,23 @@ class WebServer(private val app: App, private val port: Int) {
                 val ok = onMain { app.media.openApp(j.optString("app"), j.optString("search").ifBlank { null }) }
                 json(out, JSONObject().put("ok", ok == true))
             }
+            r.path == "/api/purifier" -> {
+                val j = r.json()
+                val p = app.purifier
+                val latch = CountDownLatch(1)
+                var err: String? = null
+                val done: (String?) -> Unit = { err = it; latch.countDown() }
+                when {
+                    !p.configured -> { err = "čistička není připojená"; latch.countDown() }
+                    j.has("power") -> p.setPower(j.getBoolean("power"), done)
+                    j.has("speed") -> p.setFan(j.getInt("speed"), done)
+                    j.has("mode") -> p.setAuto(j.optString("mode").equals("auto", true), done)
+                    j.has("ionizer") -> p.setFeature("Ionizer", j.getBoolean("ionizer"), done)
+                    else -> { err = "chybí power, speed, mode nebo ionizer"; latch.countDown() }
+                }
+                latch.await(20, TimeUnit.SECONDS)
+                json(out, JSONObject().put("ok", err == null).put("error", err))
+            }
             r.path == "/api/ask" -> {
                 val text = r.json().optString("text")
                 val latch = CountDownLatch(1)
@@ -242,7 +260,7 @@ class WebServer(private val app: App, private val port: Int) {
     companion object {
         /** Adresy, které něco mění nebo stojí peníze — jen POST a jen ze stejné stránky (viz [guard]). */
         val WRITE_PATHS = setOf(
-            "/save", "/update", "/api/page", "/api/heating", "/api/media", "/api/play", "/api/open", "/api/ask",
+            "/save", "/update", "/api/page", "/api/heating", "/api/media", "/api/play", "/api/open", "/api/ask", "/api/purifier",
         )
 
         /**

@@ -28,8 +28,13 @@ import kotlin.math.abs
  */
 class ClockPage(ctx: Context) : Page(ctx) {
     private val app = App.instance
-    private val canvasView = ClockView(ctx)
-    override val view: View = canvasView
+    private val airBar = AirBar(ctx)
+    private val canvasView = ClockView(ctx, airBar)
+    // proužek kvality vzduchu je zvlášť nad hodinami: jeho animace pak nepřekresluje celé okno
+    override val view: View = android.widget.FrameLayout(ctx).apply {
+        addView(canvasView, android.widget.FrameLayout.LayoutParams(-1, -1))
+        addView(airBar, android.widget.FrameLayout.LayoutParams(-1, -1))
+    }
 
     private val tick = object : Runnable {
         override fun run() {
@@ -38,21 +43,104 @@ class ClockPage(ctx: Context) : Page(ctx) {
         }
     }
     private val onData = { canvasView.invalidate() }
+    private val onAir = { airBar.update(app.purifier.data); canvasView.invalidate() }
 
     override fun onShow() {
         app.main.post(tick)
         app.weather.listen(onData)
         app.calendar.listen(onData)
+        app.purifier.listen(onAir)
+        airBar.running = true
     }
 
     override fun onHide() {
         app.main.removeCallbacks(tick)
         app.weather.unlisten(onData)
         app.calendar.unlisten(onData)
+        app.purifier.unlisten(onAir)
+        airBar.running = false
         canvasView.backToNow(animate = false) // příště zase od „nyní“
     }
 
-    private class ClockView(ctx: Context) : View(ctx) {
+    /**
+     * Proužek pod souhrnem dne: barva podle kvality vzduchu doma (zářivě modrá = dobrý),
+     * při změně se barva plynule přelije. Když čistička běží, proužkem pomalu putuje světlý
+     * odlesk. Bez čističky (nebo bez dat) není vidět. Klepnutí otevře okno Vzduch.
+     */
+    private class AirBar(ctx: Context) : View(ctx) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val shine = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val rect = RectF()
+        private val clip = Path()
+        private var target: Int? = null
+        private var color = 0
+        private var spinning = false
+        private var phase = 0f
+        private var lastFrame = 0L
+        var running = false
+            set(v) { field = v; if (v) invalidate() }
+
+        /** Kde proužek leží (počítá okno hodin podle rozložení); prázdný = schovat. */
+        fun place(l: Float, t: Float, r: Float, b: Float) {
+            if (rect.left != l || rect.top != t || rect.right != r || rect.bottom != b) {
+                rect.set(l, t, r, b)
+                clip.reset(); clip.addRoundRect(rect, rect.height() / 2, rect.height() / 2, Path.Direction.CW)
+                invalidate()
+            }
+        }
+
+        fun update(d: cz.stihnuto.panel.purifier.Purifier?) {
+            val lvl = d?.takeIf { it.online }?.level
+            target = lvl?.let { AirPage.levelColor(it) }
+            spinning = d?.on == true
+            if (color == 0) target?.let { color = it }
+            invalidate()
+        }
+
+        val visibleBar get() = target != null && !rect.isEmpty
+
+        override fun onDraw(c: Canvas) {
+            val t = target ?: return
+            if (rect.isEmpty) return
+            val now = android.os.SystemClock.uptimeMillis()
+            val dt = if (lastFrame == 0L) 16 else (now - lastFrame).coerceIn(1, 100)
+            lastFrame = now
+            if (color != t) color = mix(color, t, (dt / 400f).coerceAtMost(1f)) // přelití barvy ~1 s
+            p.color = color
+            c.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, p)
+            if (spinning && running) {
+                // světlý odlesk projde proužkem jednou za ~4 s
+                phase = (phase + dt / 4000f) % 1f
+                val w = rect.width() * 0.25f
+                val x = rect.left - w + (rect.width() + 2 * w) * phase
+                shine.shader = android.graphics.LinearGradient(x, 0f, x + w, 0f,
+                    intArrayOf(0x00FFFFFF, 0x88FFFFFF.toInt(), 0x00FFFFFF), null, android.graphics.Shader.TileMode.CLAMP)
+                c.save(); c.clipPath(clip); c.drawRect(x, rect.top, x + w, rect.bottom, shine); c.restore()
+            }
+            if (running && (color != t || spinning)) {
+                // ~20 snímků za sekundu stačí na plynulý odlesk a šetří hodiny
+                postInvalidateDelayed(50)
+            } else lastFrame = 0L
+        }
+
+        private fun mix(a: Int, b: Int, f: Float): Int {
+            fun ch(sh: Int) = (((a shr sh) and 0xFF) + ((((b shr sh) and 0xFF) - ((a shr sh) and 0xFF)) * f).toInt().let {
+                if (it == 0 && ((a shr sh) and 0xFF) != ((b shr sh) and 0xFF)) (if (((b shr sh) and 0xFF) > ((a shr sh) and 0xFF)) 1 else -1) else it
+            }) and 0xFF
+            return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+        }
+
+        override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+            if (!visibleBar) return false
+            // dotyková plocha je vyšší než tenký proužek
+            val pad = rect.height() * 3f
+            if (e.x < rect.left || e.x > rect.right || e.y < rect.top - pad || e.y > rect.bottom + pad) return false
+            if (e.actionMasked == android.view.MotionEvent.ACTION_UP) App.instance.showPage("air")
+            return true
+        }
+    }
+
+    private class ClockView(ctx: Context, private val airBar: AirBar) : View(ctx) {
         private val hours = Ui.paint(Ui.PRIMARY, 1f, Ui.BLACK)
         private val minutes = Ui.paint(Ui.TEXT, 1f, Ui.BLACK)
         private val date = Ui.paint(Ui.TEXT, 1f, Ui.MEDIUM, Paint.Align.CENTER)
@@ -242,7 +330,9 @@ class ClockPage(ctx: Context) : Page(ctx) {
                 val top = if (next != null) chipY + h * 0.045f else base
                 val bottom = h * 0.93f
                 val labelSize = h * 0.046f
-                val iy = top + (bottom - top - h * 0.12f) / 2 + h * 0.046f
+                // s proužkem kvality vzduchu se souhrn kousek zvedne, ať se pod něj vejde
+                val withBar = App.instance.purifier.data?.let { it.online && it.level != null } == true
+                val iy = top + (bottom - top - h * 0.12f) / 2 + h * 0.046f - (if (withBar) h * 0.02f else 0f)
                 // hodnoty větší, ať vyplní uvolněné místo; zmenší se, jen kdyby se nevešly
                 var vs = h * 0.078f
                 value2.textSize = vs
@@ -255,6 +345,9 @@ class ClockPage(ctx: Context) : Page(ctx) {
                     c.drawText(label, x, iy, small)
                     c.drawText(value, x, iy + h * 0.082f, value2)
                 }
+                val by = iy + h * 0.082f + h * 0.045f
+                if (withBar) airBar.place(leftL + iw * 0.18f, by, leftR - iw * 0.18f, by + h * 0.014f)
+                else airBar.place(0f, 0f, 0f, 0f)
             }
 
             // --- rolovací sloupec s předpovědí

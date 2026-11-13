@@ -34,6 +34,7 @@ class App : Application() {
     lateinit var calendar: CalendarRepo
     lateinit var radar: RadarRepo
     lateinit var shopping: Shopping
+    lateinit var purifier: cz.stihnuto.panel.purifier.PurifierRepo
     private var server: WebServer? = null
 
     /** Nastaví MainActivity — přepne okno. */
@@ -50,6 +51,7 @@ class App : Application() {
         calendar = CalendarRepo(this)
         radar = RadarRepo(this)
         shopping = Shopping(this)
+        purifier = cz.stihnuto.panel.purifier.PurifierRepo(this)
         Jokes.prefetch(this)
         Overlay.startWatchdog(this)
         main.postDelayed({ VoiceWake.start(this) }, 15_000)
@@ -64,6 +66,7 @@ class App : Application() {
 
     fun onSettingsChanged() {
         heating.reset()
+        purifier.reset()
         weather.refresh(force = true)
         calendar.refresh(force = true)
         main.post { navigator?.invoke("__reload__") }

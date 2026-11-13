@@ -10,6 +10,7 @@ prstem do stran (nebo klepnutím na tečky dole):
 | **Po hodinách** | graf na 24 hodin: teplota, srážky v mm a pravděpodobnost, ikony |
 | **Radar** | animace srážek za poslední hodinu (RainViewer), nebo libovolná webová stránka |
 | **Hudba** | co hraje v YouTube Music / YouTube, ovládání, hlasitost, spuštění aplikací |
+| **Vzduch** | čistička Electrolux (Pure A9 a podobné): prach, těkavé látky, teplota, vlhkost, filtr; zapnout/vypnout, automatika, rychlost, ionizátor |
 | **Topení** | hlavice Tapo KE100 (cíl −/+, zapnout/vypnout, „topí") a teploměry Tapo T310/T315 |
 | **Claude** | hlasový asistent — „zatop v obýváku na 22", „bude zítra pršet?", „pusť další písničku" |
 
@@ -38,10 +39,11 @@ curl -d '{"action":"next"}' http://<ip-hodin>:8080/api/media             # play|
 curl -d '{"volume":40}' http://<ip-hodin>:8080/api/media
 curl -d '{"app":"youtube_music","search":"Lucie"}' http://<ip-hodin>:8080/api/open
 curl -d '{"text":"Kde se teď topí?"}' http://<ip-hodin>:8080/api/ask      # zeptat se Clauda na hodinách
+curl -d '{"speed":3}' http://<ip-hodin>:8080/api/purifier                 # čistička: power true/false, mode auto/manual, speed, ionizer
 ```
 
 Všechno, co něco mění (`/api/page`, `/api/heating`, `/api/media`, `/api/play`,
-`/api/open`, `/api/ask`), bere jen **POST** — tak, jak to dělá `curl -d` výše.
+`/api/open`, `/api/ask`, `/api/purifier`), bere jen **POST** — tak, jak to dělá `curl -d` výše.
 
 ### Zabezpečení
 
@@ -110,3 +112,15 @@ adb shell cmd notification allow_listener cz.stihnuto.panel/cz.stihnuto.panel.Me
 # volitelně: panel jako domovská obrazovka místo původních hodin
 adb shell pm enable cz.stihnuto.panel/cz.stihnuto.panel.HomeAlias
 ```
+
+## Čistička vzduchu Electrolux
+
+Ovládá se přes oficiální cloud Electrolux Group (stejně jako aplikace Electrolux),
+ne v domácí síti. Na <https://developer.electrolux.one/dashboard> se přihlas
+účtem z aplikace a vygeneruj API klíč, access token a refresh token; vlož je
+do nastavení hodin (část Čistička vzduchu). Hodiny si přihlášení obnovují samy.
+
+Na hlavním okně je pod souhrnem dne proužek v barvě kvality vzduchu
+(zářivě modrá = dobrý, žlutá, oranžová, červená) podle nejhoršího z prachu PM2.5,
+těkavých látek (TVOC) a CO₂, pokud ho čistička měří. Když čistička běží, proužkem
+putuje odlesk. Klepnutím se otevře okno Vzduch.

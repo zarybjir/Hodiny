@@ -35,6 +35,7 @@ object Pages {
         "radar" to Info("Radar") { RadarPage(it) },
         "music" to Info("Hudba") { MusicPage(it) },
         "heating" to Info("Topení") { HeatingPage(it) },
+        "air" to Info("Vzduch") { AirPage(it) },
         "claude" to Info("Claude") { ClaudePage(it) },
         "apps" to Info("Aplikace") { AppsPage(it) },
     )

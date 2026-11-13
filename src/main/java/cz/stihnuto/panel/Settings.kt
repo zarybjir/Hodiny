@@ -11,7 +11,7 @@ class Settings(ctx: Context) {
     var lon: Double by dbl("lon", 14.4378)
 
     /** Pořadí oken, oddělené čárkou. Okno, které tu není, se nezobrazí. */
-    var pages: String by str("pages", "clock,calendar,weather,hourly,radar,music,heating,claude")
+    var pages: String by str("pages", "clock,calendar,weather,hourly,radar,music,heating,air,claude")
 
     /** Odkazy na kalendáře ve formátu iCal (.ics), každý na nový řádek. */
     var calendarUrls: String by str("calendar_urls", "")
@@ -41,6 +41,14 @@ class Settings(ctx: Context) {
     var heatStep: Double by dbl("heat_step", 0.5)
     /** Scény topení: {"Doma": {"<id hlavice>": 21.0, "*": 21.0}, …}; "*" = výchozí pro ostatní. */
     var heatScenes: String by str("heat_scenes", "")
+
+    /**
+     * Čistička vzduchu Electrolux (developer.electrolux.one): API klíč, access a refresh token.
+     * Tokeny se samy obnovují a ukládají; refresh token se při tom mění.
+     */
+    var elxApiKey: String by str("elx_api_key", "")
+    var elxAccessToken: String by str("elx_access_token", "")
+    var elxRefreshToken: String by str("elx_refresh_token", "")
 
     /** claude | gemini */
     var aiProvider: String by str("ai_provider", "claude")
@@ -82,6 +90,17 @@ class Settings(ctx: Context) {
                 p.edit().putString("pages", saved.replaceFirst("clock", "clock,calendar")).apply()
             }
             p.edit().putInt("pages_version", 2).apply()
+        }
+        // nové okno Vzduch (čistička) hned za Topení
+        if (p.getInt("pages_version", 1) < 3) {
+            val saved = p.getString("pages", null)
+            if (saved != null && "air" !in saved.split(',')) {
+                val list = saved.split(',').map { it.trim() }.toMutableList()
+                val at = list.indexOf("heating").let { if (it >= 0) it + 1 else list.size }
+                list.add(at, "air")
+                p.edit().putString("pages", list.joinToString(",")).apply()
+            }
+            p.edit().putInt("pages_version", 3).apply()
         }
         // noční ztlumení podsvícení zrušeno
         if (p.getInt("night_version", 1) < 3) {
