@@ -123,7 +123,7 @@ class AirPage(ctx: Context) : Page(ctx) {
             .apply { background = Ui.rounded(if (p.on) Ui.CARD_HI else Ui.SKY, b / 2f) },
             LinearLayout.LayoutParams((u * 26).toInt(), b))
         if (p.on) {
-            ctl.addView(Ui.button(ctx, "Auto", u * 4.5f, if (p.auto) Ui.SKY else Ui.CARD_HI, if (p.auto) Ui.ON_SKY else Ui.TEXT) {
+            ctl.addView(Ui.button(ctx, app.purifier.autoMode, u * 4.5f, if (p.auto) Ui.SKY else Ui.CARD_HI, if (p.auto) Ui.ON_SKY else Ui.TEXT) {
                 app.purifier.setAuto(true)
             }.apply { background = Ui.rounded(if (p.auto) Ui.SKY else Ui.CARD_HI, b / 2f) },
                 LinearLayout.LayoutParams((u * 18).toInt(), b).apply { leftMargin = (u * 3).toInt() })
@@ -132,10 +132,10 @@ class AirPage(ctx: Context) : Page(ctx) {
                 background = Ui.rounded(Ui.CARD_HI, b / 2f); setPadding(0, 0, 0, 0)
             }
             ctl.addView(round("−") { app.purifier.nudgeFan(-1) }, LinearLayout.LayoutParams(b, b))
-            val speed = if (p.auto) "auto" else (p.fan?.toString() ?: "–")
+            val speed = p.fan?.toString() ?: "–" // i v automatice ukázat, jak rychle zrovna jede
             val sc = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-            sc.addView(Ui.text(ctx, speed, u * (if (p.auto) 6.5f else 10f), if (p.auto) Ui.DIM else Ui.TEXT, Ui.REGULAR))
-            sc.addView(Ui.text(ctx, "rychlost 1–${p.fanMax}", u * 3.2f, Ui.DIM))
+            sc.addView(Ui.text(ctx, speed, u * 10f, if (p.auto) Ui.DIM else Ui.TEXT, Ui.REGULAR))
+            sc.addView(Ui.text(ctx, if (p.auto) "řídí čistička" else "rychlost 1–${p.fanMax}", u * 3.2f, Ui.DIM))
             ctl.addView(sc, LinearLayout.LayoutParams((u * 24).toInt(), -2))
             ctl.addView(round("+") { app.purifier.nudgeFan(1) }, LinearLayout.LayoutParams(b, b))
         } else {

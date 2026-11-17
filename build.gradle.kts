@@ -11,8 +11,8 @@ android {
         applicationId = "cz.stihnuto.panel"
         minSdk = 26
         targetSdk = 34
-        versionCode = 86
-        versionName = "0.86"
+        versionCode = 87
+        versionName = "0.87"
         ndk { abiFilters += setOf("armeabi-v7a", "arm64-v8a") }
     }
 

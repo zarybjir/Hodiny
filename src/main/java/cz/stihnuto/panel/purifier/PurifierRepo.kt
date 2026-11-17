@@ -214,11 +214,29 @@ class PurifierRepo(app: App) : Repo(app) {
 
     // --- ovládání (z displeje, z asistenta i z webového API)
 
-    fun setPower(on: Boolean, done: ((String?) -> Unit)? = null) =
-        send(JSONObject().put("Workmode", if (on) "Auto" else "PowerOff"), done) { it.copy(workmode = if (on) "Auto" else "PowerOff") }
+    /**
+     * Jak se u téhle čističky jmenuje automatický režim: Pure A9 s novějším firmwarem zná
+     * „Smart“ místo „Auto“. Bere se z hodnot, které čistička sama nabízí (capabilities).
+     */
+    val autoMode: String
+        get() {
+            val values = info?.capabilities?.optJSONObject("Workmode")?.optJSONObject("values")
+            val names = values?.keys()?.asSequence()?.toList().orEmpty()
+            return names.firstOrNull { it.equals("Smart", true) }
+                ?: names.firstOrNull { it.equals("Auto", true) }
+                ?: data?.workmode?.takeIf { it.equals("Smart", true) }
+                ?: "Auto"
+        }
 
-    fun setAuto(auto: Boolean, done: ((String?) -> Unit)? = null) =
-        send(JSONObject().put("Workmode", if (auto) "Auto" else "Manual"), done) { it.copy(workmode = if (auto) "Auto" else "Manual") }
+    fun setPower(on: Boolean, done: ((String?) -> Unit)? = null) {
+        val m = if (on) autoMode else "PowerOff"
+        send(JSONObject().put("Workmode", m), done) { it.copy(workmode = m) }
+    }
+
+    fun setAuto(auto: Boolean, done: ((String?) -> Unit)? = null) {
+        val m = if (auto) autoMode else "Manual"
+        send(JSONObject().put("Workmode", m), done) { it.copy(workmode = m) }
+    }
 
     /** Rychlost ventilátoru; přepne do ručního režimu (v automatice ji čistička ignoruje). */
     fun setFan(level: Int, done: ((String?) -> Unit)? = null) {
