@@ -61,21 +61,21 @@ class ClockGraph(private val u: Float) {
             val time = if (next.allDay) "celý den" else if (next.start.isBefore(now)) "probíhá" else Ui.time(next.start)
             top += " · $day$time ${next.title}"
         }
-        header.textSize = h * 0.042f
+        header.textSize = h * 0.045f
         while (header.measureText(top) > w * 0.92f && top.length > 6) top = top.dropLast(2).trimEnd() + "…"
-        c.drawText(top, w / 2, h * 0.095f, header)
+        c.drawText(top, w / 2, h * 0.085f, header)
 
         // --- velký čas uprostřed; velikost podle šířky i výšky
-        val gTop = h * 0.535f
+        val gTop = h * 0.48f
         if (w != fitW || h != fitH) {
-            var s = h * 0.40f
+            var s = h * 0.37f
             fun widthAt(): Float { hours.textSize = s; minutes.textSize = s; return hours.measureText("00") + minutes.measureText(":00") }
-            while ((widthAt() > w * 0.9f || s * 0.711f > h * 0.30f) && s > 10) s *= 0.98f
+            while ((widthAt() > w * 0.9f || s * 0.711f > h * 0.27f) && s > 10) s *= 0.98f
             fitSize = s; fitW = w; fitH = h
         }
         hours.textSize = fitSize; minutes.textSize = fitSize
         val cap = fitSize * 0.711f
-        val base = h * 0.125f + (gTop - h * 0.07f - h * 0.125f + cap) / 2
+        val base = h * 0.115f + (gTop - h * 0.06f - h * 0.115f + cap) / 2
         val hh = "${now.hour}"
         val mm = ":%02d".format(now.minute)
         val tw = hours.measureText(hh) + minutes.measureText(mm)
@@ -84,11 +84,11 @@ class ClockGraph(private val u: Float) {
 
         // --- proužek vzduchu mezi časem a grafem
         val barW = w * 0.36f
-        val by = (base + gTop) / 2 - h * 0.01f
+        val by = (base + gTop) / 2 - h * 0.012f
         place(w / 2 - barW / 2, by, w / 2 + barW / 2, by + h * 0.022f)
 
         // --- graf (z mezipaměti)
-        val gx = u * 3f
+        val gx = u * 3f // okraj karty grafu
         graphRect.set(gx, gTop, w - gx, h - bottomInset)
         val wx = app.weather.data
         if (wx == null) {
@@ -113,55 +113,54 @@ class ClockGraph(private val u: Float) {
         c.drawBitmap(bmp, graphRect.left, graphRect.top, null)
     }
 
-    private fun drawGraph(c: Canvas, w: Float, h: Float, screenH: Float, hs: List<Hour>) {
+    /**
+     * Rozměry písma a ikon jsou dané podílem výšky obrazovky [S] (hodiny mají jen 800 × 480 bodů
+     * na 4 palcích — menší písmo by nešlo přečíst), rozložení podílem výšky karty.
+     */
+    private fun drawGraph(c: Canvas, w: Float, h: Float, S: Float, hs: List<Hour>) {
         val n = hs.size
-        val f = screenH / 600f // měřítko vůči návrhu (600 px vysoká obrazovka)
         rect.set(0f, 0f, w, h)
         fill.shader = null; fill.color = Ui.CARD
-        c.drawRoundRect(rect, 18 * f, 18 * f, fill)
-        val pad = 34 * f
+        c.drawRoundRect(rect, S * 0.03f, S * 0.03f, fill)
+        val pad = S * 0.06f
         val gx0 = pad; val gx1 = w - pad
         val sx = (gx1 - gx0) / (n - 1)
         fun x(i: Int) = gx0 + i * sx
-        val iconY = h * 0.12f
-        val tTop = h * 0.30f; val tBot = h * 0.58f
-        val rTop = h * 0.66f; val rBot = h * 0.86f
-        val hourY = h * 0.955f
+        val iconY = h * 0.14f; val windY = h * 0.31f
+        val tTop = h * 0.47f; val tBot = h * 0.67f
+        val rTop = h * 0.72f; val rBot = h * 0.85f
+        val hourY = h * 0.965f
         val tMin = hs.minOf { it.temp }; val tMax = hs.maxOf { it.temp }
         val span = (tMax - tMin).coerceAtLeast(4.0); val mid = (tMax + tMin) / 2
         fun ty(t: Double) = (tBot - ((t - (mid - span / 2)) / span).toFloat() * (tBot - tTop))
-        val step = if (n > 26) 3 else 2
+        // popisky aspoň ~0,17 výšky obrazovky od sebe (jinak se slijí)
+        val step = listOf(2, 3, 4, 6, 8).firstOrNull { it * sx >= S * 0.17f } ?: 8
 
         // půlnoc
-        line.pathEffect = DashPathEffect(floatArrayOf(4 * f, 4 * f), 0f)
+        line.pathEffect = DashPathEffect(floatArrayOf(S * 0.008f, S * 0.008f), 0f)
         hs.forEachIndexed { i, hr ->
             if (hr.time.hour == 0 && i > 0) {
-                line.color = Ui.FAINT; line.strokeWidth = 1.5f * f
-                c.drawLine(x(i), h * 0.2f, x(i), rBot, line)
-                small.textSize = 13 * f; small.textAlign = Paint.Align.LEFT
-                c.drawText("zítra", x(i) + 6 * f, h * 0.24f, small)
-                small.textAlign = Paint.Align.CENTER
+                line.color = Ui.FAINT; line.strokeWidth = S * 0.003f
+                c.drawLine(x(i), tTop - S * 0.04f, x(i), rBot, line)
             }
         }
         line.pathEffect = null
 
         // srážky: světlé = pravděpodobnost, sytě modré = mm
         val maxMm = hs.maxOf { it.precip }.coerceAtLeast(2.0)
-        val bw = sx * 0.62f
+        val bw = sx * 0.66f
         hs.forEachIndexed { i, hr ->
             if (hr.precipProb > 0) {
-                fill.color = 0x384FA3FF
+                fill.color = 0x404FA3FF
                 val ph = (rBot - rTop) * hr.precipProb / 100f
                 rect.set(x(i) - bw / 2, rBot - ph, x(i) + bw / 2, rBot); c.drawRoundRect(rect, bw / 4, bw / 4, fill)
             }
             if (hr.precip > 0.05) {
                 fill.color = Ui.BLUE
-                val mh = ((hr.precip / maxMm).toFloat() * (rBot - rTop)).coerceAtLeast(3 * f)
+                val mh = ((hr.precip / maxMm).toFloat() * (rBot - rTop)).coerceAtLeast(S * 0.006f)
                 rect.set(x(i) - bw / 2, rBot - mh, x(i) + bw / 2, rBot); c.drawRoundRect(rect, bw / 4, bw / 4, fill)
             }
         }
-        fill.color = Ui.FAINT
-        c.drawRect(gx0, rBot, gx1, rBot + 1.5f * f, fill)
 
         // teplota: hladká křivka s výplní
         path.reset()
@@ -176,30 +175,31 @@ class ClockGraph(private val u: Float) {
         fill.shader = LinearGradient(0f, tTop, 0f, tBot + h * 0.04f, 0x55FFC94A, 0x00FFC94A, Shader.TileMode.CLAMP)
         c.drawPath(area, fill)
         fill.shader = null
-        line.color = Ui.ACCENT; line.strokeWidth = 3.5f * f
+        line.color = Ui.ACCENT; line.strokeWidth = S * 0.008f
         c.drawPath(path, line)
 
         // „nyní“
-        line.color = 0x59A8C7FA; line.strokeWidth = 2 * f
-        c.drawLine(x(0), h * 0.2f, x(0), rBot, line)
+        line.color = 0x59A8C7FA; line.strokeWidth = S * 0.004f
+        c.drawLine(x(0), tTop - S * 0.04f, x(0), rBot, line)
 
-        // popisky po 2–3 hodinách
+        // popisky
+        val ws = S * 0.042f
         for (i in hs.indices step step) {
             val hr = hs[i]
-            WeatherIcon.draw(c, hr.code, hr.isDay, x(i) - 13 * f, iconY, 27 * f * 1.9f)
+            WeatherIcon.draw(c, hr.code, hr.isDay, x(i), iconY, S * 0.15f)
+            // vítr: šipka (kam fouká) a km/h pod ikonou, barva podle nárazů
             val col = windColor(hr.gusts)
-            arrow(c, x(i) + 17 * f, iconY - 8 * f, hr.windDir, 15 * f, col)
-            windTxt.textSize = 12.5f * f; windTxt.color = col
-            c.drawText("${Math.round(hr.wind)}", x(i) + 17 * f, iconY + 17 * f, windTxt)
+            val wt = "${Math.round(hr.wind)}"
+            windTxt.textSize = ws; windTxt.color = col
+            val tw = windTxt.measureText(wt)
+            arrow(c, x(i) - tw / 2 - ws * 0.35f, windY - ws * 0.33f, hr.windDir, ws * 0.8f, col)
+            c.drawText(wt, x(i) + ws * 0.3f, windY, windTxt)
+            // teplota s tmavým obrysem, ať se neztrácí ve žluté výplni
             fill.color = Ui.ACCENT
-            c.drawCircle(x(i), ty(hr.temp), 4.5f * f, fill)
-            label.textSize = 17 * f
-            c.drawText(Ui.deg(hr.temp), x(i), ty(hr.temp) - 10 * f, label)
-            if (hr.precipProb >= 20) {
-                rainTxt.textSize = 12.5f * f
-                c.drawText("${hr.precipProb}%", x(i), rTop - 4 * f, rainTxt)
-            }
-            small.textSize = 14.5f * f
+            c.drawCircle(x(i), ty(hr.temp), S * 0.009f, fill)
+            haloText(c, Ui.deg(hr.temp), x(i), ty(hr.temp) - S * 0.02f, S * 0.052f, Ui.TEXT, S)
+            if (hr.precipProb >= 20) haloText(c, "${hr.precipProb}%", x(i), rTop - S * 0.006f, S * 0.033f, Ui.BLUE, S)
+            small.textSize = S * 0.042f
             small.color = if (i == 0) Ui.TEXT else Ui.DIM
             small.typeface = if (i == 0) Ui.MEDIUM else Ui.REGULAR
             c.drawText(if (i == 0) "nyní" else "${hr.time.hour}", x(i), hourY, small)
@@ -207,18 +207,29 @@ class ClockGraph(private val u: Float) {
         small.color = Ui.DIM; small.typeface = Ui.REGULAR
     }
 
+    private val halo = Ui.paint(Ui.CARD, 1f, Ui.MEDIUM, Paint.Align.CENTER).apply {
+        style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND
+    }
+
+    private fun haloText(c: Canvas, t: String, x: Float, y: Float, size: Float, color: Int, S: Float) {
+        halo.textSize = size; halo.strokeWidth = S * 0.014f
+        c.drawText(t, x, y, halo)
+        label.textSize = size; label.color = color
+        c.drawText(t, x, y, label)
+    }
+
     /** Šipka ukazuje, KAM vítr fouká (předpověď udává, odkud). */
     private fun arrow(c: Canvas, cx: Float, cy: Float, fromDeg: Double, s: Float, col: Int) {
         val a = Math.toRadians(fromDeg + 180 - 90)
         val dx = Math.cos(a).toFloat(); val dy = Math.sin(a).toFloat()
         val x2 = cx + dx * s * 0.5f; val y2 = cy + dy * s * 0.5f
-        line.color = col; line.strokeWidth = s * 0.14f
+        line.color = col; line.strokeWidth = s * 0.16f
         c.drawLine(cx - dx * s * 0.5f, cy - dy * s * 0.5f, x2 - dx * s * 0.2f, y2 - dy * s * 0.2f, line)
         val hx = -dy; val hy = dx
         path.reset()
         path.moveTo(x2, y2)
-        path.lineTo(x2 - dx * s * 0.38f + hx * s * 0.24f, y2 - dy * s * 0.38f + hy * s * 0.24f)
-        path.lineTo(x2 - dx * s * 0.38f - hx * s * 0.24f, y2 - dy * s * 0.38f - hy * s * 0.24f)
+        path.lineTo(x2 - dx * s * 0.42f + hx * s * 0.28f, y2 - dy * s * 0.42f + hy * s * 0.28f)
+        path.lineTo(x2 - dx * s * 0.42f - hx * s * 0.28f, y2 - dy * s * 0.42f - hy * s * 0.28f)
         path.close()
         fill.color = col
         c.drawPath(path, fill)
@@ -228,6 +239,6 @@ class ClockGraph(private val u: Float) {
     private fun windColor(gusts: Double) = when {
         gusts >= 45 -> 0xFFFF6B6B.toInt()
         gusts >= 30 -> 0xFFFFB04D.toInt()
-        else -> Ui.DIM
+        else -> 0xFFBFC6CD.toInt() // světlejší než běžný šedý text, ať jde přečíst
     }
 }
