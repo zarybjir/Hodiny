@@ -13,6 +13,8 @@ class Current(
 class Hour(
     val time: LocalDateTime, val temp: Double, val precipProb: Int, val precip: Double,
     val code: Int, val wind: Double, val isDay: Boolean,
+    /** Odkud vítr fouká (°, 0 = od severu) a nárazy v km/h. */
+    val windDir: Double = 0.0, val gusts: Double = 0.0,
 )
 
 class Day(
@@ -30,7 +32,7 @@ object WeatherApi {
             "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation," +
             "weather_code,wind_speed_10m,wind_gusts_10m,pressure_msl,is_day" +
             "&hourly=temperature_2m,precipitation_probability,precipitation,weather_code," +
-            "wind_speed_10m,is_day&forecast_hours=48" +
+            "wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day&forecast_hours=48" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum," +
             "precipitation_probability_max,sunrise,sunset,wind_speed_10m_max,uv_index_max" +
             "&forecast_days=7&timezone=auto&wind_speed_unit=kmh"
@@ -54,6 +56,8 @@ object WeatherApi {
                 h.getJSONArray("weather_code").optInt(i),
                 h.getJSONArray("wind_speed_10m").optDouble(i, 0.0),
                 h.getJSONArray("is_day").optInt(i, 1) == 1,
+                h.optJSONArray("wind_direction_10m")?.optDouble(i, 0.0) ?: 0.0,
+                h.optJSONArray("wind_gusts_10m")?.optDouble(i, 0.0) ?: 0.0,
             )
         }
         val d = j.getJSONObject("daily")

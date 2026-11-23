@@ -20,6 +20,8 @@ class Settings(ctx: Context) {
     var jokeIndex: Int by int("joke_index", 0)
     /** Region pro tipy na akce pro děti (Kudyznudy). */
     var kznRegion: String by str("kzn_region", "hlavni-mesto-praha")
+    /** Vzhled hlavního okna: „column“ = sloupec s hodinovkou vpravo, „graph“ = velký čas a graf po hodinách. */
+    var clockLayout: String by str("clock_layout", "column")
     /** Horní lišta s kartami pro rychlé přepínání oken. */
     var topBar: Boolean
         get() = p.getBoolean("top_bar", false)

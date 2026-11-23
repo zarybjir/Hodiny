@@ -344,6 +344,14 @@ class AppsPage(ctx: Context) : Page(ctx) {
             row.addView(Ui.text(ctx, (Pages.all[id]?.title ?: id) + home, u * 5f, Ui.TEXT, Ui.MEDIUM),
                 LinearLayout.LayoutParams(0, -2, 1f))
             val b = (u * 11).toInt()
+            if (id == "clock") {
+                // vzhled hlavního okna přímo u jeho karty
+                val graph = app.settings.clockLayout == "graph"
+                row.addView(Ui.button(ctx, if (graph) "Vzhled: graf" else "Vzhled: sloupec", u * 4f, Ui.CARD_HI, Ui.TEXT) {
+                    app.settings.clockLayout = if (graph) "column" else "graph"
+                    render()
+                }, LinearLayout.LayoutParams(-2, b).apply { rightMargin = (u * 2).toInt() })
+            }
             if (enabled) {
                 row.addView(Ui.button(ctx, "▲", u * 4.5f, if (i > 0) Ui.CARD_HI else Ui.CARD, if (i > 0) Ui.TEXT else Ui.FAINT) {
                     if (i > 0) { on.add(i - 1, on.removeAt(i)); saveWindows(on) }

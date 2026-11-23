@@ -218,8 +218,22 @@ class ClockPage(ctx: Context) : Page(ctx) {
             }
         }
 
+        /** Vzhled „graf“ (velký čas a graf po hodinách); jinak původní sloupec vpravo. */
+        private val graphLayout = ClockGraph(Ui.unit(ctx))
+        private val graphMode get() = App.instance.settings.clockLayout == "graph"
+
         override fun onDraw(c: Canvas) {
             val app = App.instance
+            if (graphMode) {
+                colLeft = 1e9f; maxScroll = 0f // nic se neroluje
+                // dole jsou tečky oken, s horní lištou nejsou
+                val inset = Ui.unit(context) * (if (app.settings.topBar) 2.5f else 6.5f)
+                val withBar = app.purifier.data?.let { it.online && it.level != null } == true
+                graphLayout.draw(c, width.toFloat(), height.toFloat(), inset) { l, t, r, b ->
+                    if (withBar) airBar.place(l, t, r, b) else airBar.place(0f, 0f, 0f, 0f)
+                }
+                return
+            }
             val h = height.toFloat()
             // s horní lištou je obrazovka nižší — velikost hodinovky ale drž jako bez ní
             val hu = h + (if (app.settings.topBar) Ui.unit(context) * 12f else 0f)
@@ -449,6 +463,12 @@ class ClockPage(ctx: Context) : Page(ctx) {
         override fun onTouchEvent(e: MotionEvent): Boolean {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    if (graphMode) {
+                        // klepnutí na graf otevře okno Po hodinách (přejetí do strany dál přepíná okna)
+                        if (!graphLayout.graphRect.contains(e.x, e.y)) return false
+                        downX = e.x; downY = e.y
+                        return true
+                    }
                     if (maxScroll <= 0f || e.x < colLeft) return false // mimo sloupec / není co rolovat
                     removeCallbacks(returnToNow)
                     scroller.forceFinished(true)
@@ -477,6 +497,12 @@ class ClockPage(ctx: Context) : Page(ctx) {
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    if (graphMode) {
+                        val dx = e.x - downX
+                        if (abs(dx) > width * 0.1f && abs(dx) > abs(e.y - downY)) pager()?.onSwipe?.invoke(if (dx < 0) 1 else -1)
+                        else if (abs(dx) < slop * 2 && abs(e.y - downY) < slop * 2) App.instance.showPage("hourly")
+                        return true
+                    }
                     var swipe = 0
                     if (dragging) tracker?.let { t ->
                         t.addMovement(e)
@@ -493,11 +519,18 @@ class ClockPage(ctx: Context) : Page(ctx) {
                         if (abs(dx) > width * 0.1f && abs(dx) > abs(e.y - downY)) swipe = if (dx < 0) 1 else -1
                     }
                     endTouch()
-                    if (swipe != 0) (parent as? cz.stihnuto.panel.Pager)?.onSwipe?.invoke(swipe)
+                    if (swipe != 0) pager()?.onSwipe?.invoke(swipe)
                 }
                 MotionEvent.ACTION_CANCEL -> endTouch()
             }
             return true
+        }
+
+        /** Přepínač oken nad námi (mezi ním a hodinami je ještě vrstva s proužkem vzduchu). */
+        private fun pager(): cz.stihnuto.panel.Pager? {
+            var v = parent
+            while (v != null && v !is cz.stihnuto.panel.Pager) v = v.parent
+            return v as? cz.stihnuto.panel.Pager
         }
 
         private fun endTouch() {
